@@ -1,4 +1,4 @@
-import 'auth_service.dart';
+import '../models/auth_tokens.dart';
 import 'token_storage.dart';
 
 class WebAuthService {

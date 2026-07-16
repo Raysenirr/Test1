@@ -8,7 +8,7 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/oidc_config.dart';
-import 'auth_service.dart';
+import '../models/auth_tokens.dart';
 import 'token_storage.dart';
 
 class WebAuthService {

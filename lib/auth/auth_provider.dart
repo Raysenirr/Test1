@@ -1,166 +1,70 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import 'auth_service.dart';
-import 'user_profile.dart';
-import 'web_auth_service_stub.dart'
-    if (dart.library.html) 'web_auth_service.dart';
+import '../models/auth_state.dart';
+import '../models/auth_tokens.dart';
+import '../models/user_profile.dart';
+import 'auth_session_manager.dart';
 
 class AuthProvider extends ChangeNotifier {
-  final AuthService _authService;
-  late final WebAuthService _webAuthService;
+  final AuthSessionManager _sessionManager;
 
   bool _isLoading = false;
   bool _isAuthenticated = false;
   bool _isRefreshing = false;
   String? _errorMessage;
 
-  String? _accessToken;
-  String? _idToken;
-  String? _refreshToken;
-  DateTime? _accessTokenExpiration;
-  String? _tokenType;
-  List<String>? _scopes;
-  DateTime? _lastTokenRefreshTime;
+  AuthTokens? _tokens;
   UserProfile? _profile;
 
   Timer? _refreshTimer;
 
-  AuthProvider(this._authService) {
-    _webAuthService = WebAuthService(_authService.tokenStorage);
-  }
+  AuthProvider(this._sessionManager);
 
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _isAuthenticated;
   String? get errorMessage => _errorMessage;
 
-  String? get accessToken => _accessToken;
-  String? get idToken => _idToken;
-  String? get refreshToken => _refreshToken;
-  DateTime? get accessTokenExpiration => _accessTokenExpiration;
-  String? get tokenType => _tokenType;
-  List<String>? get scopes => _scopes;
-  DateTime? get lastTokenRefreshTime => _lastTokenRefreshTime;
+  String? get accessToken => _tokens?.accessToken;
+  String? get idToken => _tokens?.idToken;
+  String? get refreshToken => _tokens?.refreshToken;
+  DateTime? get accessTokenExpiration => _tokens?.accessTokenExpiration;
+  String? get tokenType => _tokens?.tokenType;
+  List<String>? get scopes => _tokens?.scopes;
+  DateTime? get lastTokenRefreshTime => _tokens?.lastTokenRefreshTime;
   UserProfile? get profile => _profile;
 
-  int? get expiresIn {
-    final expiration = _accessTokenExpiration;
-
-    if (expiration == null) {
-      return null;
-    }
-
-    final seconds = expiration.difference(DateTime.now()).inSeconds;
-
-    if (seconds < 0) {
-      return 0;
-    }
-
-    return seconds;
-  }
+  int? get expiresIn => _tokens?.expiresIn;
 
   String get authorizationStatus {
     return _isAuthenticated ? 'Авторизован' : 'Не авторизован';
   }
 
   Future<void> checkAuthState() async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
-    try {
-      if (kIsWeb) {
-        final redirectTokens = await _webAuthService.handleRedirectIfNeeded();
-
-        if (redirectTokens != null) {
-          _setTokens(redirectTokens);
-          _isAuthenticated = true;
-          return;
-        }
-      }
-
-      final savedTokens = await _getSavedTokens();
-
-      if (savedTokens.accessToken == null && savedTokens.refreshToken == null) {
-        await _forceLogout();
-        return;
-      }
-
-      if (_authService.isAccessTokenActual(savedTokens.accessTokenExpiration)) {
-        _setTokens(savedTokens);
-        _isAuthenticated = savedTokens.accessToken != null;
-        return;
-      }
-
-      if (savedTokens.refreshToken != null) {
-        final refreshedTokens = await _refreshTokensByPlatform();
-        _setTokens(refreshedTokens);
-        _isAuthenticated = true;
-        return;
-      }
-
-      await _forceLogout();
-    } catch (error, stackTrace) {
-      debugPrint('CHECK AUTH ERROR: $error');
-      debugPrint('CHECK AUTH STACKTRACE: $stackTrace');
-
-      await _forceLogout();
-      _errorMessage = 'Сессия истекла. Войдите заново.';
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
+    await _runWithLoading(() async {
+      final state = await _sessionManager.restoreSession();
+      _applyState(state);
+    }, sessionExpiredMessage: true);
   }
 
   Future<void> login() async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
+    await _runWithLoading(() async {
+      final state = await _sessionManager.login();
 
-    try {
-      if (kIsWeb) {
-        await _webAuthService.login();
+      if (state == null) {
         return;
       }
 
-      final tokens = await _authService.login();
-
-      _setTokens(tokens);
-      _isAuthenticated = true;
-    } catch (error, stackTrace) {
-      debugPrint('LOGIN ERROR: $error');
-      debugPrint('LOGIN STACKTRACE: $stackTrace');
-
-      await _forceLogout();
-      _errorMessage = error.toString();
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
+      _applyState(state);
+    });
   }
 
   Future<void> refreshTokens() async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
-    try {
-      final tokens = await _refreshTokensByPlatform();
-
-      _setTokens(tokens);
-      _isAuthenticated = true;
-    } catch (error, stackTrace) {
-      debugPrint('REFRESH ERROR: $error');
-      debugPrint('REFRESH STACKTRACE: $stackTrace');
-
-      await _forceLogout();
-      _errorMessage = 'Сессия истекла. Войдите заново.';
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
+    await _runWithLoading(() async {
+      final state = await _sessionManager.refreshSession();
+      _applyState(state);
+    }, sessionExpiredMessage: true);
   }
 
   Future<void> _refreshTokensSilently() async {
@@ -171,20 +75,16 @@ class AuthProvider extends ChangeNotifier {
     _isRefreshing = true;
 
     try {
-      final tokens = await _refreshTokensByPlatform();
-
-      _setTokens(tokens);
-      _isAuthenticated = true;
+      final state = await _sessionManager.refreshSession();
+      _applyState(state);
       _errorMessage = null;
-
       notifyListeners();
     } catch (error, stackTrace) {
       debugPrint('AUTO REFRESH ERROR: $error');
       debugPrint('AUTO REFRESH STACKTRACE: $stackTrace');
 
-      await _forceLogout();
+      await _logoutSilently();
       _errorMessage = 'Сессия истекла. Войдите заново.';
-
       notifyListeners();
     } finally {
       _isRefreshing = false;
@@ -197,7 +97,7 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _logoutByPlatform();
+      await _sessionManager.logout();
       _clearState();
     } catch (error, stackTrace) {
       debugPrint('LOGOUT ERROR: $error');
@@ -211,49 +111,35 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<AuthTokens> _getSavedTokens() {
-    if (kIsWeb) {
-      return _webAuthService.getSavedTokens();
-    }
+  Future<void> _runWithLoading(
+    Future<void> Function() action, {
+    bool sessionExpiredMessage = false,
+  }) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
 
-    return _authService.getSavedTokens();
+    try {
+      await action();
+    } catch (error, stackTrace) {
+      debugPrint('AUTH ERROR: $error');
+      debugPrint('AUTH STACKTRACE: $stackTrace');
+
+      await _logoutSilently();
+
+      _errorMessage = sessionExpiredMessage
+          ? 'Сессия истекла. Войдите заново.'
+          : error.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
-  Future<AuthTokens> _refreshTokensByPlatform() {
-    if (kIsWeb) {
-      return _webAuthService.refreshTokens();
-    }
-
-    return _authService.refreshTokens();
-  }
-
-  Future<void> _logoutByPlatform() {
-    if (kIsWeb) {
-      return _webAuthService.logout();
-    }
-
-    return _authService.logout();
-  }
-
-  void _setTokens(AuthTokens tokens) {
-    _accessToken = tokens.accessToken;
-    _idToken = tokens.idToken;
-    _refreshToken = tokens.refreshToken;
-    _accessTokenExpiration = tokens.accessTokenExpiration;
-    _tokenType = tokens.tokenType;
-    _scopes = tokens.scopes;
-    _lastTokenRefreshTime = tokens.lastTokenRefreshTime;
-
-    if (_idToken != null && _idToken!.isNotEmpty) {
-      try {
-        _profile = UserProfile.fromIdToken(_idToken!);
-      } catch (error) {
-        debugPrint('PROFILE DECODE ERROR: $error');
-        _profile = null;
-      }
-    } else {
-      _profile = null;
-    }
+  void _applyState(AuthState state) {
+    _isAuthenticated = state.isAuthenticated;
+    _tokens = state.tokens;
+    _profile = state.profile;
 
     _scheduleAccessTokenRefresh();
   }
@@ -262,7 +148,12 @@ class AuthProvider extends ChangeNotifier {
     _refreshTimer?.cancel();
     _refreshTimer = null;
 
-    final expiration = _accessTokenExpiration;
+    final expiration = _tokens?.accessTokenExpiration;
+    final refreshToken = _tokens?.refreshToken;
+
+    if (!_isAuthenticated) {
+      return;
+    }
 
     if (expiration == null) {
       debugPrint(
@@ -271,7 +162,7 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
 
-    if (_refreshToken == null || _refreshToken!.isEmpty) {
+    if (refreshToken == null || refreshToken.isEmpty) {
       debugPrint(
         'AUTO REFRESH: refresh token отсутствует, таймер не поставлен',
       );
@@ -295,14 +186,14 @@ class AuthProvider extends ChangeNotifier {
     _refreshTimer = Timer(delay, _refreshTokensSilently);
   }
 
-  Future<void> _forceLogout() async {
+  Future<void> _logoutSilently() async {
     _refreshTimer?.cancel();
     _refreshTimer = null;
 
     try {
-      await _logoutByPlatform();
+      await _sessionManager.logout();
     } catch (error) {
-      debugPrint('FORCE LOGOUT STORAGE CLEAR ERROR: $error');
+      debugPrint('LOGOUT STORAGE CLEAR ERROR: $error');
     }
 
     _clearState();
@@ -313,13 +204,7 @@ class AuthProvider extends ChangeNotifier {
     _refreshTimer = null;
 
     _isAuthenticated = false;
-    _accessToken = null;
-    _idToken = null;
-    _refreshToken = null;
-    _accessTokenExpiration = null;
-    _tokenType = null;
-    _scopes = null;
-    _lastTokenRefreshTime = null;
+    _tokens = null;
     _profile = null;
   }
 

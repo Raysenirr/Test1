@@ -1,43 +1,8 @@
 import 'package:flutter_appauth/flutter_appauth.dart';
 
 import '../config/oidc_config.dart';
+import '../models/auth_tokens.dart';
 import 'token_storage.dart';
-
-class AuthTokens {
-  final String? accessToken;
-  final String? idToken;
-  final String? refreshToken;
-  final DateTime? accessTokenExpiration;
-  final String? tokenType;
-  final List<String>? scopes;
-  final DateTime? lastTokenRefreshTime;
-
-  const AuthTokens({
-    required this.accessToken,
-    required this.idToken,
-    required this.refreshToken,
-    required this.accessTokenExpiration,
-    required this.tokenType,
-    required this.scopes,
-    required this.lastTokenRefreshTime,
-  });
-
-  int? get expiresIn {
-    final expiration = accessTokenExpiration;
-
-    if (expiration == null) {
-      return null;
-    }
-
-    final seconds = expiration.difference(DateTime.now()).inSeconds;
-
-    if (seconds < 0) {
-      return 0;
-    }
-
-    return seconds;
-  }
-}
 
 class AuthService {
   final FlutterAppAuth _appAuth = const FlutterAppAuth();
@@ -61,27 +26,13 @@ class AuthService {
       throw Exception('Не удалось получить access token');
     }
 
-    final now = DateTime.now();
-    final scopes = result.scopes ?? OidcConfig.scopes;
-
-    await _tokenStorage.saveTokens(
+    return _saveAndBuildTokens(
       accessToken: result.accessToken!,
-      refreshToken: result.refreshToken,
-      idToken: result.idToken,
-      accessTokenExpiration: result.accessTokenExpirationDateTime,
-      tokenType: result.tokenType,
-      scopes: scopes,
-      lastTokenRefreshTime: now,
-    );
-
-    return AuthTokens(
-      accessToken: result.accessToken,
       idToken: result.idToken,
       refreshToken: result.refreshToken,
       accessTokenExpiration: result.accessTokenExpirationDateTime,
       tokenType: result.tokenType,
-      scopes: scopes,
-      lastTokenRefreshTime: now,
+      scopes: result.scopes,
     );
   }
 
@@ -106,28 +57,13 @@ class AuthService {
       throw Exception('Не удалось обновить access token');
     }
 
-    final now = DateTime.now();
-    final newRefreshToken = result.refreshToken ?? savedRefreshToken;
-    final scopes = result.scopes ?? OidcConfig.scopes;
-
-    await _tokenStorage.saveTokens(
+    return _saveAndBuildTokens(
       accessToken: result.accessToken!,
-      refreshToken: newRefreshToken,
       idToken: result.idToken,
+      refreshToken: result.refreshToken ?? savedRefreshToken,
       accessTokenExpiration: result.accessTokenExpirationDateTime,
       tokenType: result.tokenType,
-      scopes: scopes,
-      lastTokenRefreshTime: now,
-    );
-
-    return AuthTokens(
-      accessToken: result.accessToken,
-      idToken: result.idToken,
-      refreshToken: newRefreshToken,
-      accessTokenExpiration: result.accessTokenExpirationDateTime,
-      tokenType: result.tokenType,
-      scopes: scopes,
-      lastTokenRefreshTime: now,
+      scopes: result.scopes,
     );
   }
 
@@ -153,5 +89,37 @@ class AuthService {
     }
 
     return expiration.isAfter(DateTime.now().add(const Duration(minutes: 5)));
+  }
+
+  Future<AuthTokens> _saveAndBuildTokens({
+    required String accessToken,
+    required String? idToken,
+    required String? refreshToken,
+    required DateTime? accessTokenExpiration,
+    required String? tokenType,
+    required List<String>? scopes,
+  }) async {
+    final now = DateTime.now();
+    final actualScopes = scopes ?? OidcConfig.scopes;
+
+    await _tokenStorage.saveTokens(
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+      idToken: idToken,
+      accessTokenExpiration: accessTokenExpiration,
+      tokenType: tokenType,
+      scopes: actualScopes,
+      lastTokenRefreshTime: now,
+    );
+
+    return AuthTokens(
+      accessToken: accessToken,
+      idToken: idToken,
+      refreshToken: refreshToken,
+      accessTokenExpiration: accessTokenExpiration,
+      tokenType: tokenType,
+      scopes: actualScopes,
+      lastTokenRefreshTime: now,
+    );
   }
 }
