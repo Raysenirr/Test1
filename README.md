@@ -137,7 +137,7 @@ lib/config/oidc_config.dart
 ```dart
 class OidcConfig {
   static const String discoveryUrl =
-      'https://a-kalinin-authoriza-backend-stand-d37a.twc1.net/oidc/.well-known/openid-configuration';
+      'https://oidc.authoriza.ru/oidc/.well-known/openid-configuration';
 
   static const String clientId =
       '88be8919-1792-42fe-9f17-e9ba64e17507';
@@ -251,7 +251,7 @@ flutter build ios --debug --no-codesign
 
 Такая сборка подтверждает, что проект компилируется под iOS.
 
-Для установки приложения на реальный iPhone требуется Apple Developer signing и сборка подписанного `.ipa`.
+Для установки приложения на реальный iPhone требуется Apple Developer signing и сборка подписанного `.ipa`. 
 
 ## Основные экраны приложения
 
@@ -288,21 +288,6 @@ flutter build ios --debug --no-codesign
 
 Полные значения токенов на экран не выводятся. Токены отображаются в маскированном виде.
 
-## Отображение ответа Token Endpoint
-
-После входа приложение отображает данные, полученные от Token Endpoint.
-
-Минимальный набор:
-
-| Поле | Отображение |
-| --- | --- |
-| access_token | отображается в маскированном виде |
-| id_token | отображается в маскированном виде |
-| refresh_token | отображается в маскированном виде, если выдан |
-| expires_in | отображается как оставшееся время до истечения Access Token |
-| token_type | отображается |
-| scope | отображается |
-
 ## Отображение содержимого токенов
 
 Приложение декодирует JWT и отображает payload.
@@ -320,14 +305,6 @@ Access Token payload
 ```
 
 Декодирование выполняется локально на клиенте.
-
-## UserInfo
-
-В текущей реализации UserInfo Endpoint не используется.
-
-Данные пользователя отображаются из payload ID Token.
-
-Если необходимо полностью закрыть пункт UserInfo из технического задания, нужно добавить отдельный запрос к `userinfo_endpoint` после успешного входа и после обновления токенов.
 
 ## Хранение данных аутентификации
 
@@ -568,56 +545,32 @@ flutter_application_1/
 
 | Проблема | Возможная причина | Решение |
 | --- | --- | --- |
-| Не открывается приложение после входа на Android | Не настроен custom scheme redirect | Проверить `AndroidManifest.xml` и redirect URI в Авторизе |
-| Ошибка redirect URI | Redirect URI не совпадает с настройками в Авторизе | Проверить `ru.authoriza.demo:/oauth2callback` и `http://localhost:3000/` |
-| Не приходит Refresh Token | Не указан scope `offline_access` | Проверить scopes в `OidcConfig` и настройках клиента |
-| После перезапуска пользователь не восстановился | Refresh Token истёк или был очищен | Выполнить вход заново |
-| Web-версия не возвращается в приложение | Неверный порт запуска | Запускать через `flutter run -d chrome --web-port 3000` |
-| Ошибка CORS в web | Token Endpoint не разрешает запросы из браузера | Разрешить origin `http://localhost:3000` на стороне провайдера |
-| iOS нельзя установить на iPhone | Сборка выполнена без code signing | Настроить Apple Developer signing и собрать `.ipa` |
-| Refresh Token отклонён | Refresh Token истёк или отозван | Приложение очищает сессию и просит войти заново |
+| `adb` не распознаётся в PowerShell | Android SDK Platform Tools не добавлен в `PATH` | Запустить `adb` по полному пути: `& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" devices` или добавить `platform-tools` в `PATH` |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` при установке на Android | На устройстве уже установлена версия приложения с другой подписью | Удалить старое приложение с телефона или выполнить `adb uninstall com.example.flutter_application_1` |
+| После входа приложение не открывается обратно на Android | Не настроен custom scheme redirect или intent-filter | Проверить redirect URI `ru.authoriza.demo:/oauth2callback` в Авторизе и intent-filter в `AndroidManifest.xml` |
+| Ошибка `redirect_uris must only contain web uris` | В Авторизе был выбран неподходящий тип приложения или неверно настроен redirect URI | Проверить тип клиента и добавить корректные redirect URI: mobile `ru.authoriza.demo:/oauth2callback`, web `http://localhost:3000/` |
+| Ошибка `You need to use a Theme.AppCompat theme` у `RedirectUriReceiverActivity` | Для activity обработки redirect не задана совместимая тема | Добавить `AppAuthRedirectTheme` в `styles.xml` и подключить `androidx.appcompat:appcompat` |
+| Ошибка `Couldn't resolve the package 'http'` или `crypto` | В `pubspec.yaml` нет нужной зависимости | Добавить `http` и `crypto`, затем выполнить `flutter pub get` |
+| Web-версия не возвращается в приложение после входа | Приложение запущено не на том порту или redirect URI не совпадает | Запускать web через `flutter run -d chrome --web-port 3000` и проверить redirect URI `http://localhost:3000/` |
+| Ошибка CORS в web-версии | Token Endpoint не разрешает запросы из браузера | Разрешить origin `http://localhost:3000` на стороне провайдера |
+| Не приходит Refresh Token | Не указан scope `offline_access` или провайдер не выдал refresh token | Проверить scopes в `OidcConfig` и настройки клиента в Авторизе |
+| После перезапуска пользователь не восстановился | Refresh Token истёк, был очищен или отклонён Token Endpoint | Выполнить вход заново; приложение очищает повреждённую или недействительную сессию |
+| При refresh пользователь возвращается на экран входа | Refresh Token стал недействительным, истёк или был отозван | Это ожидаемое поведение: приложение удаляет токены и просит войти заново |
+| `Runner.app` из Codemagic не устанавливается на iPhone | Сборка выполнена без code signing | Для реальной установки нужен Apple Developer signing и сборка подписанного `.ipa` |
+| Конфликт в `README.md` при `git pull` | README был изменён и локально, и в удалённом репозитории | Разрешить конфликт вручную или выбрать локальную версию через `git checkout --ours README.md` |
 
-## Безопасность
+## Полезные ссылки
 
-В репозиторий не должны попадать:
-
-* client_secret;
-* `.env`;
-* полные значения токенов;
-* дампы Token Endpoint response;
-* логи с токенами;
-* локальные файлы сборки;
-* временные файлы IDE.
-
-Client ID для public client может находиться в клиентском приложении.
-
-Client Secret в Flutter-приложении не используется и не должен храниться в репозитории.
-
-Токены в интерфейсе отображаются только в маскированном виде.
-
-## Статус реализации
-
-Реализовано:
-
-* OIDC Discovery;
-* Authorization Code Flow with PKCE;
-* Android login через `flutter_appauth`;
-* iOS-сборка через Codemagic;
-* web login через Authorization Code Flow with PKCE;
-* получение Access Token, ID Token и Refresh Token;
-* отображение параметров Token Endpoint;
-* маскирование токенов;
-* декодирование JWT payload;
-* сохранение токенов;
-* восстановление сессии после перезапуска;
-* ручное обновление токенов;
-* автоматическое обновление Access Token за 5 минут до истечения;
-* обработка недействительного Refresh Token;
-* logout с очисткой сохранённых данных;
-* декомпозиция кода на auth, models, screens, widgets, utils и app.
-
-Не реализовано:
-
-* запрос к UserInfo Endpoint.
-
-UserInfo Endpoint не используется в текущей версии. Данные пользователя отображаются из ID Token payload.
+* [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html)
+* [OAuth 2.0 Authorization Code Flow with PKCE](https://datatracker.ietf.org/doc/html/rfc7636)
+* [flutter_appauth на pub.dev](https://pub.dev/packages/flutter_appauth)
+* [flutter_secure_storage на pub.dev](https://pub.dev/packages/flutter_secure_storage)
+* [provider на pub.dev](https://pub.dev/packages/provider)
+* [http на pub.dev](https://pub.dev/packages/http)
+* [crypto на pub.dev](https://pub.dev/packages/crypto)
+* [Flutter: установка и настройка](https://docs.flutter.dev/get-started/install)
+* [Flutter: запуск web-приложений](https://docs.flutter.dev/platform-integration/web/building)
+* [AppAuth for Android](https://github.com/openid/AppAuth-Android)
+* [AppAuth for iOS](https://github.com/openid/AppAuth-iOS)
+* [Codemagic: Flutter apps](https://docs.codemagic.io/flutter-configuration/flutter-projects/)
+* [Codemagic: iOS code signing](https://docs.codemagic.io/flutter-code-signing/ios-code-signing/)
