@@ -140,7 +140,7 @@ class OidcConfig {
       'https://oidc.authoriza.ru/oidc/.well-known/openid-configuration';
 
   static const String clientId =
-      '88be8919-1792-42fe-9f17-e9ba64e17507';
+      '58465092-a77e-4b94-8ff8-4440c70443aa;
 
   static const String mobileRedirectUrl =
       'ru.authoriza.demo:/oauth2callback';
@@ -159,7 +159,6 @@ class OidcConfig {
 
 `clientId` является идентификатором public client и может находиться в клиентском приложении.
 
-`client_secret` в Flutter-приложении не используется и не должен храниться в репозитории.
 
 ## Redirect URI
 
@@ -393,34 +392,8 @@ Access Token обновляется заранее, с запасом приме
 * токены отображаются в маскированном виде;
 * JWT payload отображается.
 
-### 2. Проверка PKCE
 
-При переходе на Authorization Endpoint в URL должны присутствовать параметры:
-
-```text
-code_challenge=...
-code_challenge_method=S256
-```
-
-Это подтверждает использование Authorization Code Flow with PKCE.
-
-Для Android и iOS PKCE выполняется библиотекой `flutter_appauth`.
-
-Для web-версии PKCE формируется в коде приложения.
-
-### 3. Проверка Discovery
-
-В коде не должны быть вручную прописаны Authorization Endpoint и Token Endpoint.
-
-Приложение должно использовать:
-
-```text
-discoveryUrl
-```
-
-Для web-версии endpoint-ы должны браться из Discovery-документа.
-
-### 4. Отображение токенов
+### 2. Отображение токенов
 
 После входа на экране должны отображаться:
 
@@ -432,16 +405,14 @@ discoveryUrl
 * срок действия Access Token;
 * время последнего обновления токенов.
 
-Токены должны отображаться в маскированном виде.
-
-### 5. Отображение JWT payload
+### 3. Отображение JWT payload
 
 После входа на экране должны отображаться:
 
 * Access Token payload;
 * ID Token payload.
 
-### 6. Ручное обновление токенов
+### 4. Ручное обновление токенов
 
 1. Выполнить вход.
 2. Нажать кнопку обновления токенов.
@@ -454,7 +425,7 @@ discoveryUrl
 * новые токены сохраняются;
 * интерфейс обновляется.
 
-### 7. Автоматическое обновление Access Token
+### 5. Автоматическое обновление Access Token
 
 1. Выполнить вход.
 2. Дождаться приближения срока истечения Access Token.
@@ -466,7 +437,7 @@ discoveryUrl
 * сохранённые данные обновляются;
 * пользователь остаётся авторизованным.
 
-### 8. Восстановление сессии после перезапуска
+### 6. Восстановление сессии после перезапуска
 
 1. Выполнить вход.
 2. Закрыть приложение.
@@ -478,7 +449,7 @@ discoveryUrl
 * выполняет восстановление сессии;
 * если Refresh Token ещё действителен, повторный вход не требуется.
 
-### 9. Недействительный Refresh Token
+### 7. Недействительный Refresh Token
 
 Если Refresh Token отсутствует, истёк или отклонён Token Endpoint, приложение:
 
@@ -487,7 +458,7 @@ discoveryUrl
 * не выполняет восстановление сессии;
 * возвращает пользователя на экран входа.
 
-### 10. Выход из приложения
+### 8. Выход из приложения
 
 1. Выполнить вход.
 2. Нажать кнопку выхода.
@@ -498,6 +469,41 @@ discoveryUrl
 * пользовательские данные очищаются;
 * интерфейс возвращается в состояние до авторизации;
 * повторное восстановление сессии невозможно без нового входа.
+
+## Скриншоты
+
+### Экран до входа
+
+Главная страница до авторизации.
+
+![Экран до входа](screenshots/before-login1.png)
+
+### Экран после входа
+
+Страница профиля после успешной авторизации.
+
+![Экран после входа](screenshots/autorise-user.png)
+
+
+### Отображение токенов
+
+Блок профиля с маскированными токенами, сроками действия и JWT payload.
+
+![Токены](screenshots/tokens1.png)
+
+![Токены](screenshots/tokens2.png)
+
+### До обновления токенов
+
+До ручного обновления токенов.
+
+![ОбновлениеДо](screenshots/refresh-result1.png)
+
+### После обновления токенов
+
+После ручного обновления токенов.
+![ОбновлениеПосле](screenshots/refresh-result2.png)
+
 
 ## Структура проекта
 
@@ -545,19 +551,15 @@ flutter_application_1/
 
 | Проблема | Возможная причина | Решение |
 | --- | --- | --- |
-| `adb` не распознаётся в PowerShell | Android SDK Platform Tools не добавлен в `PATH` | Запустить `adb` по полному пути: `& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" devices` или добавить `platform-tools` в `PATH` |
 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` при установке на Android | На устройстве уже установлена версия приложения с другой подписью | Удалить старое приложение с телефона или выполнить `adb uninstall com.example.flutter_application_1` |
 | После входа приложение не открывается обратно на Android | Не настроен custom scheme redirect или intent-filter | Проверить redirect URI `ru.authoriza.demo:/oauth2callback` в Авторизе и intent-filter в `AndroidManifest.xml` |
-| Ошибка `redirect_uris must only contain web uris` | В Авторизе был выбран неподходящий тип приложения или неверно настроен redirect URI | Проверить тип клиента и добавить корректные redirect URI: mobile `ru.authoriza.demo:/oauth2callback`, web `http://localhost:3000/` |
 | Ошибка `You need to use a Theme.AppCompat theme` у `RedirectUriReceiverActivity` | Для activity обработки redirect не задана совместимая тема | Добавить `AppAuthRedirectTheme` в `styles.xml` и подключить `androidx.appcompat:appcompat` |
-| Ошибка `Couldn't resolve the package 'http'` или `crypto` | В `pubspec.yaml` нет нужной зависимости | Добавить `http` и `crypto`, затем выполнить `flutter pub get` |
+| Ошибка `Couldn't resolve the package ` | В `pubspec.yaml` нет нужной зависимости | Добавить, затем выполнить `flutter pub get` |
 | Web-версия не возвращается в приложение после входа | Приложение запущено не на том порту или redirect URI не совпадает | Запускать web через `flutter run -d chrome --web-port 3000` и проверить redirect URI `http://localhost:3000/` |
-| Ошибка CORS в web-версии | Token Endpoint не разрешает запросы из браузера | Разрешить origin `http://localhost:3000` на стороне провайдера |
-| Не приходит Refresh Token | Не указан scope `offline_access` или провайдер не выдал refresh token | Проверить scopes в `OidcConfig` и настройки клиента в Авторизе |
+| Не приходит Refresh Token | Не указан scope `offline_access` или провайдер не выдал refresh token | Проверить scopes в `OidcConfig`|
 | После перезапуска пользователь не восстановился | Refresh Token истёк, был очищен или отклонён Token Endpoint | Выполнить вход заново; приложение очищает повреждённую или недействительную сессию |
 | При refresh пользователь возвращается на экран входа | Refresh Token стал недействительным, истёк или был отозван | Это ожидаемое поведение: приложение удаляет токены и просит войти заново |
 | `Runner.app` из Codemagic не устанавливается на iPhone | Сборка выполнена без code signing | Для реальной установки нужен Apple Developer signing и сборка подписанного `.ipa` |
-| Конфликт в `README.md` при `git pull` | README был изменён и локально, и в удалённом репозитории | Разрешить конфликт вручную или выбрать локальную версию через `git checkout --ours README.md` |
 
 ## Полезные ссылки
 
@@ -566,8 +568,6 @@ flutter_application_1/
 * [flutter_appauth на pub.dev](https://pub.dev/packages/flutter_appauth)
 * [flutter_secure_storage на pub.dev](https://pub.dev/packages/flutter_secure_storage)
 * [provider на pub.dev](https://pub.dev/packages/provider)
-* [http на pub.dev](https://pub.dev/packages/http)
-* [crypto на pub.dev](https://pub.dev/packages/crypto)
 * [Flutter: установка и настройка](https://docs.flutter.dev/get-started/install)
 * [Flutter: запуск web-приложений](https://docs.flutter.dev/platform-integration/web/building)
 * [AppAuth for Android](https://github.com/openid/AppAuth-Android)
